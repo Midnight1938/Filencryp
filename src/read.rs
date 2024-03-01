@@ -1,13 +1,15 @@
 use crate::CHUNK_SIZE;
+use aes_gcm::{
+    aead::{Aead, Key, OsRng},
+    Aes256Gcm, KeyInit, Nonce,
+};
 use crossbeam::channel::Sender;
-use std::fs::File;
-use std::io::{self, BufReader, Read, Result};
-use aes_gcm::{aead::{Aead, KeyInit, OsRng}, Aes256Gcm, Nonce, AesGcm};
-use aes_gcm::aead::consts::U12;
-use aes_gcm::aes::Aes256;
-use rand::{RngCore};
+use rand::RngCore;
+use std::fs::{self, File};
+use std::io::{self, BufReader, Read, Result, Write};
 
-pub fn read_loop(infile: &str, stats_tx: Sender<usize>, write_tx: Sender<Vec<u8>>, decrypt: &str) -> Result<()> {
+pub fn read_loop(
+    infile: &str, stats_tx: Sender<usize>, write_tx: Sender<Vec<u8>>, key_file: &str) -> Result<()> {
     let mut reader: Box<dyn Read> = if !infile.is_empty() {
         Box::new(BufReader::new(File::open(infile)?))
     } else {
@@ -16,7 +18,7 @@ pub fn read_loop(infile: &str, stats_tx: Sender<usize>, write_tx: Sender<Vec<u8>
     let mut buffer = [0; CHUNK_SIZE];
 
     // Reuse key and nonce bytes
-    let key = Aes256Gcm::generate_key(&mut OsRng);
+    let key = load_or_generate_key(key_file, infile);
     let mut nonce_bytes = [0; 12];
     let cipher = Aes256Gcm::new(&key);
     OsRng.fill_bytes(&mut nonce_bytes);
@@ -30,7 +32,20 @@ pub fn read_loop(infile: &str, stats_tx: Sender<usize>, write_tx: Sender<Vec<u8>
         let _ = stats_tx.send(num_read); // Don't care if it can't send stats
 
         // TODO Decryption
-        if write_tx.send(Vec::from(scrambler(decrypt, num_read, &buffer, &cipher, &nonce_bytes))).is_err() {
+        let result = if fs::metadata(key_file).is_ok() {
+            let nonce = Nonce::from_slice(&key_file.as_bytes());
+            cipher.decrypt(nonce, &buffer[..num_read]).unwrap().to_vec()
+        } else {
+            let nonce = Nonce::from_slice(&nonce_bytes);
+            let ciphertext = cipher.encrypt(nonce, &buffer[..num_read]).unwrap();
+
+            // Include the nonce in the encrypted data
+            let mut result = nonce_bytes.to_vec();
+            result.extend_from_slice(&ciphertext);
+            result
+        };
+
+        if write_tx.send(result).is_err() {
             break;
         }
     }
@@ -40,17 +55,19 @@ pub fn read_loop(infile: &str, stats_tx: Sender<usize>, write_tx: Sender<Vec<u8>
     Ok(())
 }
 
-pub fn scrambler(decrypt: &str, num_read: usize, buffer: &[u8], cipher: &AesGcm<Aes256, U12>, nonce_bytes: &[u8; 12]) -> Vec<u8> {
-    if !decrypt.is_empty() {
-        let nonce = Nonce::from_slice(&decrypt.as_bytes());
-        cipher.decrypt(nonce, &buffer[..num_read]).unwrap().to_vec()
+// TODO Pull in a file properly
+fn load_or_generate_key(key_file: &str, infile: &str) -> Key<Aes256Gcm> {
+    if fs::metadata(key_file).is_ok() {
+        // Key file exists, load the key
+        let mut key_file = BufReader::new(File::open(key_file).unwrap());
+        let mut key = Vec::new();
+        key_file.read_to_end(&mut key).unwrap();
+        *Key::from_slice(key.as_slice())
     } else {
-        let nonce = Nonce::from_slice(nonce_bytes);
-        let ciphertext = cipher.encrypt(nonce, &buffer[..num_read]).unwrap();
-
-        // Include the nonce in the encrypted data
-        let mut result = nonce_bytes.to_vec();
-        result.extend_from_slice(&ciphertext);
-        result
+        // Key file doesn't exist, generate a new key and save it
+        let key = Aes256Gcm::generate_key(&mut OsRng);
+        let mut key_file = File::create(format!("{:?}.key", infile)).unwrap();
+        key_file.write_all(&key).unwrap();
+        key
     }
 }
