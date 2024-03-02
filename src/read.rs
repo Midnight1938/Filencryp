@@ -54,7 +54,7 @@ pub fn read_loop(infile: &str, stats_tx: Sender<usize>, write_tx: Sender<Vec<u8>
             let nonce = GenericArray::from_slice(&[0u8; 12]);
 
             cipher.decrypt(nonce, &buffer[..num_read])
-                .expect("Decryption failed")
+                .expect("Decryption failed!")
         };
 
         if write_tx.send(Vec::from(output)).is_err() {
