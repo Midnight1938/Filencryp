@@ -18,10 +18,11 @@ pub fn read_loop(
     let mut buffer = [0; CHUNK_SIZE];
 
     // Reuse key and nonce bytes
-    let key = load_or_generate_key(key_file, infile);
     let mut nonce_bytes = [0; 12];
-    let cipher = Aes256Gcm::new(&key);
     OsRng.fill_bytes(&mut nonce_bytes);
+    let key = load_or_generate_key(key_file, infile);
+    let cipher = Aes256Gcm::new(&key);
+            let nonce = Nonce::from_slice(&nonce_bytes);
 
     loop {
         let num_read = match reader.read(&mut buffer) {
@@ -33,10 +34,8 @@ pub fn read_loop(
 
         // TODO Decryption
         let result = if fs::metadata(key_file).is_ok() {
-            let nonce = Nonce::from_slice(&key_file.as_bytes());
             cipher.decrypt(nonce, &buffer[..num_read]).unwrap().to_vec()
         } else {
-            let nonce = Nonce::from_slice(&nonce_bytes);
             let ciphertext = cipher.encrypt(nonce, &buffer[..num_read]).unwrap();
 
             // Include the nonce in the encrypted data
@@ -62,11 +61,12 @@ fn load_or_generate_key(key_file: &str, infile: &str) -> Key<Aes256Gcm> {
         let mut key_file = BufReader::new(File::open(key_file).unwrap());
         let mut key = Vec::new();
         key_file.read_to_end(&mut key).unwrap();
-        *Key::from_slice(key.as_slice())
+        *Key::<Aes256Gcm>::from_slice(key.as_slice())
     } else {
         // Key file doesn't exist, generate a new key and save it
         let key = Aes256Gcm::generate_key(&mut OsRng);
-        let mut key_file = File::create(format!("{:?}.key", infile)).unwrap();
+        let mut key_file = File::create(format!("{}.key", infile.replace("\"", ""))).unwrap();
+
         key_file.write_all(&key).unwrap();
         key
     }
