@@ -1,4 +1,4 @@
-use filencryp::{args::Args, read, stats, write}; // args::Args cus binary and lib have same name
+use pvcrypt::{args::Args, read, stats, write}; // args::Args cus binary and lib have same name
 use std::io::Result;
 
 use crossbeam::channel::{bounded, unbounded};
@@ -16,9 +16,12 @@ fn main() -> Result<()> {
     let (stats_tx, stats_rx) = unbounded();
     let (write_tx, write_rx) = bounded(1024);
 
-    let read_handle = thread::spawn(move || read::read_loop(&infile, stats_tx, write_tx, &decrypt)); // Both channels cuz it'll send to both
+    let read_decrypt = decrypt.clone();
+    let write_decrypt = decrypt.clone();
+
+    let read_handle = thread::spawn(move || read::read_loop(&infile, stats_tx, write_tx, &read_decrypt)); // Both channels cuz it'll send to both
     let stats_handle = thread::spawn(move || stats::stats_loop(silent, stats_rx)); // {||} closure is a fn that can capture environment around it
-    let write_handle = thread::spawn(move || write::write_loop(&outfile, write_rx)); // python equivalent of closure is lambda
+    let write_handle = thread::spawn(move || write::write_loop(&outfile, write_rx, &write_decrypt)); // python equivalent of closure is lambda
 
     // Crash if any thread panics
     // .join returns a thread::Result<io::Result<()>>.

@@ -6,9 +6,13 @@ Providing a seperate key to facilitate decryption
 * Known issues
 + Significant speed drop on encryption, because of the algorithm.
 + Inability to decrypt with stream
+
+* How
+- It Encrypts using the Write stream
+- It Decrypts using the Read stream
 * TODO
-+ [ ] Switch to [[https://docs.rs/crate/aes-gcm-stream/latest][aes_gcm_stream]] to allow decryption above 16kb
-+ [ ] Generate unique nonce per file using OsRng.
++ [x] Switch to [[https://docs.rs/crate/aes-gcm-stream/latest][aes_gcm_stream]] to allow decryption above 16kb
++ [x] Generate unique nonce per file using OsRng.
   #+begin_src rust
     // Reuse key and nonce bytes
     let key = Aes256Gcm::generate_key(&mut OsRng);

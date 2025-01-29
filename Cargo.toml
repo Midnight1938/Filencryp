@@ -1,5 +1,5 @@
 [package]
-name = "filencryp"
+name = "pvcrypt"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,3 +11,5 @@ rand = "0.8.5"
 crossbeam = "0.8.4"
 crossterm = "0.27.0"
 aes-gcm = "0.10.3"
+aes-gcm-stream = "0.2.4"
+zeroize = "1.8.1"

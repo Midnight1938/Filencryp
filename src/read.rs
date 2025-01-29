@@ -1,81 +1,72 @@
 use crate::CHUNK_SIZE;
 use crossbeam::channel::Sender;
 
-use std::fs;
 use std::fs::File;
-use std::io::{self, BufReader, Read, Result, Write};
-use std::path::Path;
+use std::io::{self, BufReader, Read, Result};
 
-use aes_gcm::{Aes256Gcm, KeyInit};
-use aes_gcm::aead::{Aead, generic_array::GenericArray, OsRng};
+use aes_gcm_stream::Aes256GcmStreamDecryptor;
+use zeroize::Zeroize;
 
-pub fn read_loop(infile: &str, stats_tx: Sender<usize>, write_tx: Sender<Vec<u8>>, deccode: &str) -> Result<()> {
+pub fn read_loop(
+    infile: &str,
+    stats_tx: Sender<usize>,
+    write_tx: Sender<Vec<u8>>,
+    deccode: &str,
+) -> Result<()> {
     let mut reader: Box<dyn Read> = if !infile.is_empty() {
         Box::new(BufReader::new(File::open(infile)?))
     } else {
         Box::new(BufReader::new(io::stdin()))
     };
     let mut buffer = [0; CHUNK_SIZE];
-    let keydata = if Path::new(deccode).exists() {
-        read_key(deccode)
-    } else {
-        eprintln!("Key file not found. Generating a new key.");
-        //? Generate a new key and save it to the file
-        let key = Aes256Gcm::generate_key(&mut OsRng).as_slice().to_vec();
-        key_to_file(infile, &key).expect("Error saving key to file");
-        Ok(key)
-    };
-    let keydat = match keydata {
-        Ok(key) => key,
-        Err(err) => {
-            eprintln!("Error reading/generating key: {}", err);
-            return Ok(());
+
+    if !deccode.is_empty() {
+        let (mut nonce, mut key) = read_nonce_and_key(deccode)?;
+        let key_array: [u8; 32] = key.clone().try_into().expect("key must be 32 bytes");
+        let mut decryptor = Aes256GcmStreamDecryptor::new(key_array, &nonce);
+
+        loop {
+            let num_read = match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(x) => x,
+                Err(_) => break,
+            };
+            let mut buffer = decryptor.update(&buffer[..num_read]);
+            if num_read == 0 {
+                buffer.extend_from_slice(&decryptor.finalize().expect("decrypt error"));
+            }
+            let _ = stats_tx.send(buffer.len()); // Dont care if it cant see stats
+            if write_tx.send(buffer).is_err() {
+                break;
+            };
         }
-    };
 
-    loop {
-        let num_read = match reader.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(x) => x,
-            Err(_) => break,
-        };
-        let _ = stats_tx.send(num_read); // Dont care if it cant see stats
-
-        let output = if !fs::metadata(deccode).is_ok() {
-            let key = GenericArray::from_slice(&keydat);
-            let cipher = Aes256Gcm::new(key);
-            let nonce = GenericArray::from_slice(&[0u8; 12]);
-
-            cipher.encrypt(nonce, &buffer[..num_read])
-                .expect("Encryption failed")
-        } else {
-            let key = GenericArray::from_slice(&keydat);
-            let cipher = Aes256Gcm::new(key);
-            let nonce = GenericArray::from_slice(&[0u8; 12]);
-
-            cipher.decrypt(nonce, &buffer[..num_read])
-                .expect("Decryption failed!")
-        };
-
-        if write_tx.send(Vec::from(output)).is_err() {
-            break;
-        };
+        nonce.zeroize();
+        key.zeroize();
+    } else {
+        loop {
+            let num_read = match reader.read(&mut buffer) {
+                Ok(0) => break,
+                Ok(x) => x,
+                Err(_) => break,
+            };
+            let _ = stats_tx.send(num_read); // Dont care if it cant see stats
+            if write_tx.send(Vec::from(&buffer[..num_read])).is_err() {
+                break;
+            };
+        }
     }
+
     let _ = stats_tx.send(0);
     let _ = write_tx.send(Vec::new()); // empty vec
-
     Ok(())
 }
 
-fn read_key(decode: &str) -> Result<Vec<u8>> {
-    let mut file = File::open(decode)?;
-    let mut key = Vec::new();
-    file.read_to_end(&mut key)?;
-    Ok(key)
-}
-
-fn key_to_file(infile: &str, key: &[u8]) -> io::Result<()> {
-    let mut key_file = File::create(format!("{}.key", infile)).unwrap();
-    key_file.write_all(&key).unwrap();
-    Ok(())
+fn read_nonce_and_key(deccode: &str) -> Result<([u8; 32], [u8; 32])> {
+    let mut file = File::open(deccode)?;
+    let mut nonce = [0u8; 32];
+    let mut key = [0u8; 32];
+    file.read_exact(&mut nonce)?;
+    file.read_exact(&mut key)?;
+    Ok((nonce, key))
 }

@@ -29,7 +29,7 @@ impl Args {
                 Arg::new("decrypt")
                     .short('d')
                     .long("decrypt")
-                    .help("Indicate Decryption")
+                    .help("Indicate Decryption, and provide key file"),
             )
             .get_matches(); // Get the matches from the command line
 
