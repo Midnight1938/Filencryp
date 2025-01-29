@@ -1,26 +1,23 @@
-#+title: Filencryp - A file encryptor
+#+title: PV Crypt - A system level file encryption solution using aes_gcm
 
 * About
-This is a file encryption and decryption software used to encrypt a file using =aes_gcm= library.
-Providing a seperate key to facilitate decryption
-* Known issues
-+ Significant speed drop on encryption, because of the algorithm.
-+ Inability to decrypt with stream
+A file encryption and decryption software used to encrypt a file using =aes_gcm= library.
+Added feature of using pipe to encrypt and decrypt files in a single command.
 
-* How
-- It Encrypts using the Write stream
-- It Decrypts using the Read stream
-* TODO
-+ [x] Switch to [[https://docs.rs/crate/aes-gcm-stream/latest][aes_gcm_stream]] to allow decryption above 16kb
-+ [x] Generate unique nonce per file using OsRng.
-  #+begin_src rust
-    // Reuse key and nonce bytes
-    let key = Aes256Gcm::generate_key(&mut OsRng);
-    let mut nonce_bytes = [0; 12];
-    let cipher = Aes256Gcm::new(&key);
-    OsRng.fill_bytes(&mut nonce_bytes);
-    let nonce = Nonce::from_slice(&decrypt.as_bytes());
-    let altNonce = Nonce::from_slice(nonce_bytes);
-  #+end_src
-+ [ ] Save file nonce within the encrypted file.
-  By Saving the nonce in the file as plaintext in a set byte range of maybe 12. Then having the encrypted data after the 12th byte
+* Features
+- It uses =aes_gcm= library to encrypt and decrypt files
+- It is able to stream the file for encryption and decryption
+- Able to recieve and output pipe data
+
+* Usage
+** encryption
+#+BEGIN_SRC sh
+pvcrypt <input file> -o <output file>
+or
+tar -cf - /path/to/your/folder | pvcrypt -o <output file>
+#+END_SRC
+
+** decryption
+#+BEGIN_SRC sh
+pvcrypt <input file> -o <output file> -d <key>
+#+END_SRC
