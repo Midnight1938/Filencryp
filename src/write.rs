@@ -96,7 +96,7 @@ pub fn write_loop(outfile: &str, write_rx: Receiver<Vec<u8>>, deccode: &str) -> 
 
     Ok(()) // Keep the loop going
 }
-fn write_nonce_and_key(outfile: &str, nonce: &[u8; 32], key: &[u8; 32]) -> Result<()> {
+fn write_nonce_and_key(outfile: &str, nonce: &[u8; 12], key: &[u8; 32]) -> Result<()> {
     let key_path = if !outfile.is_empty() {
         format!("{}.key", outfile)
     } else {

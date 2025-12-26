@@ -83,9 +83,9 @@ pub fn read_loop(
     Ok(())
 }
 
-fn read_nonce_and_key(deccode: &str) -> Result<([u8; 32], [u8; 32])> {
+fn read_nonce_and_key(deccode: &str) -> Result<([u8; 12], [u8; 32])> {
     let mut file = File::open(deccode)?;
-    let mut nonce = [0u8; 32];
+    let mut nonce = [0u8; 12];
     let mut key = [0u8; 32];
     file.read_exact(&mut nonce)?;
     file.read_exact(&mut key)?;
