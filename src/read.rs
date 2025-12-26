@@ -31,14 +31,35 @@ pub fn read_loop(
                 Ok(x) => x,
                 Err(_) => break,
             };
-            let mut buffer = decryptor.update(&buffer[..num_read]);
             if num_read == 0 {
-                buffer.extend_from_slice(&decryptor.finalize().expect("decrypt error"));
-            }
-            let _ = stats_tx.send(buffer.len()); // Dont care if it cant see stats
-            if write_tx.send(buffer).is_err() {
                 break;
-            };
+            }
+
+            let mut plaintext = decryptor.update(&buffer[..num_read]);
+            if !plaintext.is_empty() {
+                let _ = stats_tx.send(plaintext.len()); // Dont care if it cant see stats
+                if write_tx.send(plaintext).is_err() {
+                    break;
+                };
+            }
+        }
+        match decryptor.finalize() {
+            Ok(mut last_block) => {
+                if !last_block.is_empty() {
+                    let _ = stats_tx.send(last_block.len());
+                    let _ = write_tx.send(last_block);
+                }
+            }
+            Err(_) => {
+                nonce.zeroize();
+                key.zeroize();
+                let _ = stats_tx.send(0);
+                let _ = write_tx.send(Vec::new()); // empty vec
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "decryption failed: authentication tag mismatch",
+                ));
+            }
         }
 
         nonce.zeroize();

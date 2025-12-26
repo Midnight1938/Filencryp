@@ -1,5 +1,7 @@
 # PV Crypt - A system level file encryption solution using aes_gcm
 
+# Known Issue:
+aesgcmstream does not zeroize on drop
 ## About
 
 A file encryption and decryption software used to encrypt a file using `aes_gcm` library.
